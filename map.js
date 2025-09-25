@@ -88,7 +88,46 @@ $(document).ready(function () {
         $("#lng").val(lng);
     });
 
-    $("#saveBtn").click(function (e) {
+    $("#saveBtn").click(function(e){
+        e.stopPropagation();
+        var lat = parseFloat($("#lat").val());
+        var lng = parseFloat($("#lng").val());
+        var category = $("#category").val();
 
+        if(!isNaN(lat) && !isNaN(lng) && category !== ""){
+            $.ajax({
+                url: "forms/save_location.php",
+                type: "POST",
+                data: {
+                    latitude: lat,
+                    longitude: lng,
+                    category: category
+                },
+
+                success: function(response){
+                    var res = JSON.parse(response);
+                    if(res.status === "success"){
+                        if(tempMarker){
+                            map.removeLayer(tempMarker);
+                            tempMarker = null;
+                        }
+
+                        L.marker([lat,lng])
+                            .addTo(map)
+                            .bindPopup("<b>" + category + "</b><br>(" + lat + ", " + lng + ")")
+                            .openPopup();
+                        $("#plotForm").hide();
+                        alert("Saved successfully!");
+                    }else{
+                        alert(res.message);
+                    }
+                },
+                error: function(){
+                    alert("Error connecting to server.");
+                }
+            });
+        }else{
+            alert("Please enter valid latitude, longitude, and category.");
+        }
     });
 });
