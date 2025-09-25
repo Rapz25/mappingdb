@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DATA STRUCTURE AND ALGORITHMS MAPPING</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/mystyle.css" />
+</head>
+<body>
+  <h2>Plot Location</h2>
+  <div id="map"></div>
+
+  <!-- Plot Form (hidden by default) -->
+  <div id="plotForm">
+    <span id="closeForm" class="close-btn">&times;</span>
+    <h3>Plot Marker</h3>
+    <label>Latitude:</label>
+    <input type="text" id="lat" />
+    <label>Longitude:</label>
+    <input type="text" id="lng" />
+    <label>Category:</label>
+    <select id="category">
+      <option value="">- Select Category -</option>
+      <option value="Restaurant">Restaurant</option>
+      <option value="Church">Church</option>
+      <option value="Mall">Mall</option>
+      <option value="School">School</option>
+      <option value="Park">Park</option>
+    </select>
+    <div class="form-buttons">
+      <button id="newBtn">New</button>
+      <button id="saveBtn">Save</button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="js/map.js"></script>
+</body>
+</html>
+

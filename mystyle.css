@@ -1,0 +1,90 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  text-align: center;
+}
+
+#map {
+  height: 100vh;
+  width: 100%;
+  margin-top: 10px;
+}
+
+#plotForm {
+  display: none;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background: #fff;
+  width: 250px;
+  position: absolute;
+  top: 120px;   /* just below the Plot button */
+  right: 10px;  /* aligned to the right edge */
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  border-radius: 8px;
+  font-family: Arial, sans-serif;
+}
+
+#plotForm h3 {
+  margin-top: 0;
+  font-size: 16px;
+  text-align: center;
+}
+
+#plotForm label {
+  font-size: 14px;
+  display: block;
+  margin-top: 8px;
+}
+
+#plotForm input {
+  width: 100%;
+  padding: 6px;
+  margin-top: 4px;
+  box-sizing: border-box;
+  border: 1px solid black;
+  border-radius: 4px;
+}
+
+#plotForm select {
+  width: 100%;
+  padding: 6px;
+  margin-top: 4px;
+  box-sizing: border-box;
+  border: 1px solid black;   
+  border-radius: 4px;
+  background: #fff;
+}
+
+#plotForm .form-buttons {
+  margin-top: 12px;
+  text-align: center;
+}
+
+#plotForm button {
+  margin: 5px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #f4f4f4;
+  transition: background 0.2s;
+}
+
+#plotForm button:hover {
+  background: #ddd;
+}
+
+#plotForm .close-btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #333;
+  cursor: pointer;
+}
+
+#plotForm .close-btn:hover {
+  color: red;
+}
