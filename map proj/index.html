@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel - Data Structures and Algorithms Mapping</title>
+
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet core -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <!-- Leaflet Routing Machine -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+  />
+  <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+  <!-- Leaflet MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/user_style.css" />
+  <link rel="stylesheet" href="css/mystyle.css" />
+</head>
+<body>
+  <header>
+    <h1> Admin Map Panel</h1>
+  </header>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="sidebar-content">
+        <h2>Admin Controls</h2>
+        <button id="plotBtn">New Marker</button>
+        <button id="postBtn">Post Markers</button>
+        <button id="deleteBtn">Delete Markers</button>
+        <button id="clearBtn">Clear All Markers</button>
+        <button id="showRouteBtn">Show Route</button>
+        <button id="resetZoomBtn">Reset Zoom</button>
+      </div>
+
+      <div class="output">
+        <h3> Admin Log</h3>
+        <div id="outputBox">Ready for actions...</div>
+      </div>
+    </aside>
+
+    <main class="map-area">
+      <div id="map"></div>
+
+      <!-- Plot Form -->
+      <div id="plotForm">
+        <span id="closeForm" class="close-btn">&times;</span>
+        <h3> Plot New Marker</h3>
+        <label for="lat">Latitude:</label>
+        <input type="text" id="lat" placeholder="" />
+        <label for="lng">Longitude:</label>
+        <input type="text" id="lng" placeholder="" />
+        <label for="category">Category:</label>
+        <select id="category">
+          <option value="">- Select Category -</option>
+          <option value="Gas">⛽ Gas Station</option>
+          <option value="EV">🔌 EV Charger</option>
+        </select>
+        <label for="name">Name:</label>
+        <input type="text" id="name" placeholder="" />
+        <label for="description">Description:</label>
+        <textarea id="description" rows="4" placeholder=""></textarea>
+        <div class="form-buttons">
+          <button id="newBtn">Clear Form</button>
+          <button id="saveBtn">Save Marker</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Custom JS -->
+  <script src="js/map.js"></script>
+</body>
+</html>

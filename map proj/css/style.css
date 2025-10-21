@@ -1,0 +1,139 @@
+label {
+  display: block;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin: 1rem 0 0.5rem;
+  color: var(--text-muted);
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-sm);
+  background: var(--white);
+  font-size: 1rem;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+}
+
+button {
+  background: var(--primary);
+  color: var(--white);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+button:hover {
+  background: var(--primary-dark);
+  box-shadow: var(--shadow);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.msg {
+  padding: 1rem;
+  border-radius: var(--border-radius-sm);
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+.msg.success {
+  background-color: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.msg.error {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.auth-container {
+  max-width: 400px;
+  width: 90%;
+  margin: 5rem auto;
+  padding: 2.5rem;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.auth-container h2 {
+  font-size: 1.75rem;
+  margin-bottom: 2rem;
+  color: var(--text);
+}
+
+.auth-container .switch-text {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.auth-container .switch-text a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.auth-container .switch-text a:hover {
+  color: var(--primary-dark);
+  text-decoration: underline;
+}
+
+.auth-container button {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 480px) {
+  .auth-container {
+    padding: 1.5rem;
+    margin: 3rem auto;
+  }
+
+  .auth-container h2 {
+    font-size: 1.5rem;
+  }
+}

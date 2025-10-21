@@ -1,0 +1,95 @@
+.map-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#map {
+  height: 100%;
+  width: 100%;
+  background: #e0e0e0;
+}
+
+#plotForm {
+  display: none;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  background: var(--white);
+  width: 350px;
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 1000;
+  box-shadow: var(--shadow);
+  border-radius: var(--border-radius-md);
+  font-family: 'Inter', sans-serif;
+}
+
+#plotForm h3 {
+  margin-top: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: left;
+  margin-bottom: 1.5rem;
+  color: var(--text);
+  padding-right: 2rem;
+}
+
+#plotForm .form-buttons {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+#plotForm button {
+  width: auto;
+  padding: 0.625rem 1rem;
+  font-size: 0.9375rem;
+  margin-left: 0.75rem;
+  background: var(--text-muted);
+}
+
+#plotForm button:hover {
+  background: var(--text);
+}
+
+#plotForm button:first-child {
+  background: var(--text-muted);
+}
+
+#plotForm button:first-child:hover {
+  background: var(--text);
+}
+
+#plotForm button:last-child {
+  background: var(--primary);
+}
+
+#plotForm button:last-child:hover {
+  background: var(--primary-dark);
+}
+
+#plotForm .close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1.25rem;
+  font-size: 1.75rem;
+  font-weight: normal;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+#plotForm .close-btn:hover {
+  color: var(--error);
+}
+@media (max-width: 768px) {
+  #plotForm {
+    width: 90%; /* Wider on small screens */
+    left: 5%; /* Center horizontally */
+    right: auto;
+    top: 1rem; /* Keep it near the top */
+  }
+}
