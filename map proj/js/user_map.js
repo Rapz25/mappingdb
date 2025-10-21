@@ -234,6 +234,8 @@ function findNearbyStations() {
       // Show user location
       findUserLocation();
 
+
+
       console.log(`Found ${nearbyStations.length} stations within ${CONFIG.nearbyRadius}km`);
     },
     function (error) {
@@ -264,7 +266,10 @@ function handleLocationError(error) {
   console.error("Geolocation error:", error);
 }
 
+
 //UTILITY 
+
+
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371; // Earth's radius in kilometers
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -312,7 +317,9 @@ function resetMapView() {
   map.setView(CONFIG.defaultCenter, CONFIG.defaultZoom);
 }
 
-// SEARCH 
+// ========================================
+// SEARCH FUNCTIONALITY WITH SUGGESTIONS
+// ========================================
 
 function performSearch() {
   const searchTerm = $("#searchInput").val().trim();
@@ -321,8 +328,77 @@ function performSearch() {
   const filteredStations = filterStations(currentFilter, searchTerm);
   displayStations(filteredStations);
 
+  // Hide suggestions when search is performed
+  hideSuggestions();
+
   if (filteredStations.length === 0) {
     alert("No stations found matching your search criteria.");
+  }
+}
+
+function showSearchSuggestions(searchTerm) {
+  const suggestionsContainer = $("#searchSuggestions");
+
+  if (!searchTerm || searchTerm.length < 2) {
+    hideSuggestions();
+    return;
+  }
+
+  const currentFilter = $("#categorySelect").val();
+  const matchingStations = filterStations(currentFilter, searchTerm);
+
+  // Limit to top 5 suggestions
+  const suggestions = matchingStations.slice(0, 5);
+
+  if (suggestions.length === 0) {
+    suggestionsContainer.html('<div class="no-suggestions">No matching stations found</div>');
+    suggestionsContainer.show();
+    return;
+  }
+
+  let suggestionsHtml = '';
+  suggestions.forEach(station => {
+    const distance = station.distance ? ` • ${station.distance.toFixed(1)}km` : '';
+    suggestionsHtml += `
+      <div class="suggestion-item" data-lat="${station.latitude}" data-lng="${station.longitude}" data-name="${station.name}">
+        <div class="suggestion-name">${highlightMatch(station.name, searchTerm)}</div>
+        <div class="suggestion-details">${station.category}${distance}</div>
+      </div>
+    `;
+  });
+
+  suggestionsContainer.html(suggestionsHtml);
+  suggestionsContainer.show();
+}
+
+function highlightMatch(text, searchTerm) {
+  const regex = new RegExp(`(${searchTerm})`, 'gi');
+  return text.replace(regex, '<strong>$1</strong>');
+}
+
+function hideSuggestions() {
+  $("#searchSuggestions").hide();
+}
+
+function selectSuggestion(stationName, lat, lng) {
+  $("#searchInput").val(stationName);
+  hideSuggestions();
+
+  // Find and highlight the selected station
+  const station = allLocations.find(s => s.latitude == lat && s.longitude == lng);
+  if (station) {
+    displayStations([station]);
+
+    // Center map on selected station
+    map.setView([lat, lng], 16);
+
+    // Find and open the marker popup
+    setTimeout(() => {
+      const marker = findMarkerByLocation(lat, lng);
+      if (marker) {
+        marker.openPopup();
+      }
+    }, 500);
   }
 }
 
@@ -541,12 +617,74 @@ function setupEventHandlers() {
     }
   });
 
+  // Search input with suggestions
   $("#searchInput").on('input', function () {
-    if ($(this).val().trim() === "") {
+    const searchTerm = $(this).val().trim();
+
+    if (searchTerm === "") {
+      hideSuggestions();
       clearAllRoutes();
       const currentFilter = $("#categorySelect").val();
       const filteredStations = filterStations(currentFilter);
       displayStations(filteredStations);
+    } else {
+      showSearchSuggestions(searchTerm);
+    }
+  });
+
+  // Handle suggestion clicks
+  $(document).on('click', '.suggestion-item', function () {
+    const stationName = $(this).data('name');
+    const lat = $(this).data('lat');
+    const lng = $(this).data('lng');
+    selectSuggestion(stationName, lat, lng);
+  });
+
+  // Hide suggestions when clicking outside
+  $(document).on('click', function (e) {
+    if (!$(e.target).closest('.search-container').length) {
+      hideSuggestions();
+    }
+  });
+
+  $("#searchInput").keydown(function (e) {
+    const suggestions = $('.suggestion-item');
+    const highlighted = $('.suggestion-item.highlighted');
+
+    if (e.which === 40) { 
+      e.preventDefault();
+      if (highlighted.length === 0) {
+        suggestions.first().addClass('highlighted');
+      } else {
+        highlighted.removeClass('highlighted');
+        const next = highlighted.next('.suggestion-item');
+        if (next.length > 0) {
+          next.addClass('highlighted');
+        } else {
+          suggestions.first().addClass('highlighted');
+        }
+      }
+    } else if (e.which === 38) { 
+      e.preventDefault();
+      if (highlighted.length === 0) {
+        suggestions.last().addClass('highlighted');
+      } else {
+        highlighted.removeClass('highlighted');
+        const prev = highlighted.prev('.suggestion-item');
+        if (prev.length > 0) {
+          prev.addClass('highlighted');
+        } else {
+          suggestions.last().addClass('highlighted');
+        }
+      }
+    } else if (e.which === 13 && highlighted.length > 0) {
+      e.preventDefault();
+      const stationName = highlighted.data('name');
+      const lat = highlighted.data('lat');
+      const lng = highlighted.data('lng');
+      selectSuggestion(stationName, lat, lng);
+    } else if (e.which === 27) {
+      hideSuggestions();
     }
   });
 
