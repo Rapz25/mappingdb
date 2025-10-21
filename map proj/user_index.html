@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Station Mapping System - User Panel</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/user_style.css" />
+  <link rel="stylesheet" href="css/mystyle.css" />
+</head>
+
+<body>
+  <header>
+    <h1>Station Mapping System - User Panel</h1>
+  </header>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="sidebar-content">
+        <h2>Map Controls</h2>
+        <div class="filter">
+          <label for="searchInput">Search Stations:</label>
+          <input type="text" id="searchInput" placeholder="Search by name..." />
+          <button id="searchBtn">Search</button>
+        </div>
+  
+        <button id="findMeBtn">Find My Location</button>
+        <button id="nearbyBtn">Find Nearby Stations</button>
+
+        <button id="resetBtn">Reset View</button>
+        <button id="postBtn">Show All Stations</button>
+        <button id="clearBtn">Clear Map Overlays</button>
+        <button id="routeBtn">Select a Route</button>
+
+        <div class="filter">
+          <label for="categorySelect">Filter Stations:</label>
+          <select id="categorySelect">
+            <option value="All">All Stations</option>
+            <option value="Gas">Gas Stations Only</option>
+            <option value="EV">EV Chargers Only</option>
+          </select>
+        </div>
+      </div>
+
+
+    </aside>
+
+
+    <main class="map-area">
+      <div id="map"></div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  <script src="https://unpkg.com/leaflet-geometryutil"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="js/user_map.js"></script>
+</body>
+
+</html>
