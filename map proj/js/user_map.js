@@ -1,907 +1,356 @@
-// Initialize global variables for map components
 let map;
 let routeControl = null;
 let userLocationMarker = null;
 let currentRouteLine = null;
+let markers = [];
+let allLocations = [];
+let markerClusterGroup;
 
-$(document).ready(function () {
-  // Initialize the map centered on default coordinates with zoom level 17
-  map = L.map('map').setView([10.669644, 122.948844], 17);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-  let markers = [];
-  let allLocations = [];
-
-  // Create marker cluster group for better performance with many markers
-  let markerClusterGroup = L.markerClusterGroup({
-    chunkedLoading: true,
-    maxClusterRadius: 50,
-    spiderfyOnMaxZoom: true,
-    showCoverageOnHover: false,
-    zoomToBoundsOnClick: true
-  });
-
-  // Main function to load and display markers on the map
-  function loadMarkers(filter = "All", searchTerm = "") {
-    $.ajax({
-      url: "forms/fetch_location.php",
-      type: "GET",
-      success: function (response) {
-        const res = JSON.parse(response);
-        if (res.status === "success") {
-          allLocations = res.data;
-          clearMarkers();
-
-          // Filter locations based on category and search term
-          let filteredLocations = res.data.filter(loc => {
-            if (filter !== "All" && loc.category !== filter) return false;
-            if (searchTerm && !loc.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-            return true;
-          });
-
-          filteredLocations.forEach(loc => {
-            const { latitude, longitude, category, name, description } = loc;
-
-            // Choose icon based on station category (Gas or EV)
-            const iconPath = category === "Gas"
-              ? "assets/images/gas.png"
-              : "assets/images/EV.png";
-
-            const customIcon = L.icon({
-              iconUrl: iconPath,
-              iconSize: [38, 38],
-              iconAnchor: [19, 38],
-              popupAnchor: [0, -36],
-            });
-
-            // Create marker with popup containing station info and route button
-            const marker = L.marker([latitude, longitude], { icon: customIcon })
-              .bindPopup(`<b>${name}</b><br>${category}<br>${description}<br><button onclick="showRealRoute(${latitude}, ${longitude}, '${name.replace(/'/g, "\\'")}')" style="margin-top: 5px; background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">Show Route</button>`);
-
-            marker.stationLat = latitude;
-            marker.stationLng = longitude;
-            marker.stationName = name;
-            markerClusterGroup.addLayer(marker);
-            markers.push(marker);
-          });
-
-          map.addLayer(markerClusterGroup);
-        }
-      },
-      error: () => console.error("Error fetching locations."),
-    });
+// Configuration settings
+const CONFIG = {
+  defaultCenter: [10.669644, 122.948844],
+  defaultZoom: 17,
+  nearbyRadius: 5, // kilometers
+  icons: {
+    gas: "assets/images/gas.png",
+    ev: "assets/images/EV.png",
+    userLocation: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+    startPoint: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png'
   }
-
-  function searchStations() {
-    const searchTerm = $("#searchInput").val().trim();
-    const currentFilter = $("#categorySelect").val();
-
-    if (searchTerm === "") {
-      loadMarkers(currentFilter);
-      return;
-    }
-
-    loadMarkers(currentFilter, searchTerm);
-  }
-
-  // Get user's current location using browser geolocation API
-  function findUserLocation() {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by this browser.");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      function (position) {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-
-        // Remove existing user location marker if present
-        if (userLocationMarker) {
-          map.removeLayer(userLocationMarker);
-        }
-
-        // Add red marker for user's location
-        userLocationMarker = L.marker([lat, lng], {
-          icon: L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-          })
-        }).addTo(map).bindPopup("Your Location").openPopup();
-
-        // Center map on user's location
-        map.setView([lat, lng], 15);
-        console.log(`Location found: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-      },
-      function (error) {
-        // Handle geolocation errors
-        let errorMsg = "Unable to get location: ";
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMsg += "Permission denied. Please allow location access.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMsg += "Position unavailable. Please check your GPS settings.";
-            break;
-          case error.TIMEOUT:
-            errorMsg += "Request timeout. Please try again.";
-            break;
-          default:
-            errorMsg += "Unknown error occurred.";
-            break;
-        }
-        alert(errorMsg);
-        console.error("Geolocation error:", error);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-      }
-    );
-  }
-
-  // Find and display stations within 5km of user's location
-  function findNearbyStations() {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by this browser.");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      function (position) {
-        const userLat = position.coords.latitude;
-        const userLng = position.coords.longitude;
-
-        if (allLocations.length === 0) {
-          alert("No stations loaded. Please load stations first by clicking 'Show All Stations'.");
-          return;
-        }
-
-        // Get current filter selection
-        const currentFilter = $("#categorySelect").val();
-
-        // Calculate distance for each station and sort by distance
-        const stationsWithDistance = allLocations.map(station => {
-          const distance = calculateDistance(userLat, userLng, station.latitude, station.longitude);
-          return { ...station, distance };
-        }).sort((a, b) => a.distance - b.distance);
-
-        // Filter stations within 5km radius AND by category filter
-        const nearbyStations = stationsWithDistance.filter(station => {
-          // Check distance (within 5km)
-          if (station.distance > 5) return false;
-
-          // Check category filter
-          if (currentFilter !== "All" && station.category !== currentFilter) return false;
-
-          return true;
-        });
-
-        clearMarkers();
-
-        // Check if any stations were found
-        if (nearbyStations.length === 0) {
-          const filterText = currentFilter === "All" ? "stations" : `${currentFilter} stations`;
-          alert(`No ${filterText} found within 5km of your location. Try changing the filter or expanding your search area.`);
-          return;
-        }
-
-        // Add markers for nearby stations with distance info
-        nearbyStations.forEach((loc) => {
-          const { latitude, longitude, category, name, description, distance } = loc;
-
-          const iconPath = category === "Gas"
-            ? "assets/images/gas.png"
-            : "assets/images/EV.png";
-
-          const customIcon = L.icon({
-            iconUrl: iconPath,
-            iconSize: [38, 38],
-            iconAnchor: [19, 38],
-            popupAnchor: [0, -36],
-          });
-
-          const marker = L.marker([latitude, longitude], { icon: customIcon })
-            .bindPopup(`<b>${name}</b><br>${category}<br>${description}<br><strong>Distance: ${distance.toFixed(2)} km</strong><br><button onclick="showRealRoute(${latitude}, ${longitude}, '${name.replace(/'/g, "\\'")}')" style="margin-top: 5px; background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">Show Route</button>`, {
-              autoClose: false,
-              closeOnClick: false
-            });
-
-          markerClusterGroup.addLayer(marker);
-          markers.push(marker);
-        });
-
-        map.addLayer(markerClusterGroup);
-        findUserLocation();
-
-        // Automatically open all nearby station popups with delay
-        setTimeout(() => {
-          nearbyStations.forEach((loc, index) => {
-            const marker = markers.find(m => {
-              const markerPos = m.getLatLng();
-              return Math.abs(markerPos.lat - loc.latitude) < 0.0001 &&
-                Math.abs(markerPos.lng - loc.longitude) < 0.0001;
-            });
-
-            if (marker) {
-              setTimeout(() => {
-                marker.openPopup();
-              }, index * 200);
-            }
-          });
-        }, 1000);
-
-        // Log results with filter information
-        const filterText = currentFilter === "All" ? "all types" : currentFilter;
-        console.log(`Found ${nearbyStations.length} ${filterText} stations within 5km. Popups opened automatically.`);
-      },
-      function (error) {
-        alert("Unable to get location for nearby search. Please allow location access.");
-        console.error("Geolocation error:", error);
-      }
-    );
-  }
-
-  // Calculate distance between two coordinates using Haversine formula
-  function calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  // Remove all markers from the map
-  function clearMarkers() {
-    markerClusterGroup.clearLayers();
-    markers = [];
-  }
-
-  // ========================================
-  // ROUTE MANAGEMENT FUNCTIONS
-  // ========================================
-  // Clear all routes and route-related elements from the map
-  function clearRoutes() {
-    // Remove route control if exists
-    if (routeControl) {
-      map.removeControl(routeControl);
-      routeControl = null;
-    }
-
-    // Remove current route line if exists
-    if (currentRouteLine) {
-      map.removeLayer(currentRouteLine);
-      currentRouteLine = null;
-    }
-
-    // Remove user location marker if exists
-    if (userLocationMarker) {
-      map.removeLayer(userLocationMarker);
-      userLocationMarker = null;
-    }
-  }
-
-  // ========================================
-  // BUTTON EVENT HANDLERS
-  // ========================================
-  // Reset map to default view and clear routes
-  $("#resetBtn").click(() => {
-    clearRoutes(); // Clear any existing routes
-    map.setView([10.669644, 122.948844], 17);
-    console.log("Reset map to default view.");
-  });
-
-  // Clear all markers and routes from map
-  $("#clearBtn").click(() => {
-    clearMarkers();
-    if (routeControl) {
-      map.removeControl(routeControl);
-      routeControl = null;
-    }
-    console.log("Cleared all markers and routes.");
-  });
-
-  // Load markers and clear routes
-  $("#postBtn").click(() => {
-    clearRoutes(); // Clear routes when loading new markers
-    const selected = $("#categorySelect").val();
-    loadMarkers(selected);
-  });
-
-  // Create route between two user-selected points
-  $("#routeBtn").click(() => {
-    console.log("Select two points on the map to create a route.");
-
-    map.getContainer().style.cursor = "crosshair";
-
-    let points = [];
-    let startMarker = null;
-// Initialize global variables for map components
-let map;
-let routeControl = null;
-let userLocationMarker = null;
-let currentRouteLine = null;
-
-$(document).ready(function () {
-  // Initialize the map centered on default coordinates with zoom level 17
-  map = L.map('map').setView([10.669644, 122.948844], 17);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-  let markers = [];
-  let allLocations = [];
-
-  // Create marker cluster group for better performance with many markers
-  let markerClusterGroup = L.markerClusterGroup({
-    chunkedLoading: true,
-    maxClusterRadius: 50,
-    spiderfyOnMaxZoom: true,
-    showCoverageOnHover: false,
-    zoomToBoundsOnClick: true
-  });
-
-  // Main function to load and display markers on the map
-  function loadMarkers(filter = "All", searchTerm = "") {
-    $.ajax({
-      url: "forms/fetch_location.php",
-      type: "GET",
-      success: function (response) {
-        const res = JSON.parse(response);
-        if (res.status === "success") {
-          allLocations = res.data;
-          clearMarkers();
-
-          // Filter locations based on category and search term
-          let filteredLocations = res.data.filter(loc => {
-            if (filter !== "All" && loc.category !== filter) return false;
-            if (searchTerm && !loc.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-            return true;
-          });
-
-          filteredLocations.forEach(loc => {
-            const { latitude, longitude, category, name, description } = loc;
-
-            // Choose icon based on station category (Gas or EV)
-            const iconPath = category === "Gas"
-              ? "assets/images/gas.png"
-              : "assets/images/EV.png";
-
-            const customIcon = L.icon({
-              iconUrl: iconPath,
-              iconSize: [38, 38],
-              iconAnchor: [19, 38],
-              popupAnchor: [0, -36],
-            });
-
-            // Create marker with popup containing station info and route button
-            const marker = L.marker([latitude, longitude], { icon: customIcon })
-              .bindPopup(`<b>${name}</b><br>${category}<br>${description}<br><button onclick="showRealRoute(${latitude}, ${longitude}, '${name.replace(/'/g, "\\'")}')" style="margin-top: 5px; background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">Show Route</button>`);
-
-            marker.stationLat = latitude;
-            marker.stationLng = longitude;
-            marker.stationName = name;
-            markerClusterGroup.addLayer(marker);
-            markers.push(marker);
-          });
-
-          map.addLayer(markerClusterGroup);
-        }
-      },
-      error: () => console.error("Error fetching locations."),
-    });
-  }
-
-  function searchStations() {
-    const searchTerm = $("#searchInput").val().trim();
-    const currentFilter = $("#categorySelect").val();
-
-    if (searchTerm === "") {
-      loadMarkers(currentFilter);
-      return;
-    }
-
-    loadMarkers(currentFilter, searchTerm);
-  }
-
-  // Get user's current location using browser geolocation API
-  function findUserLocation() {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by this browser.");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      function (position) {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-
-        // Remove existing user location marker if present
-        if (userLocationMarker) {
-          map.removeLayer(userLocationMarker);
-        }
-
-        // Add red marker for user's location
-        userLocationMarker = L.marker([lat, lng], {
-          icon: L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-          })
-        }).addTo(map).bindPopup("Your Location").openPopup();
-
-        // Center map on user's location
-        map.setView([lat, lng], 15);
-        console.log(`Location found: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-      },
-      function (error) {
-        // Handle geolocation errors
-        let errorMsg = "Unable to get location: ";
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMsg += "Permission denied. Please allow location access.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMsg += "Position unavailable. Please check your GPS settings.";
-            break;
-          case error.TIMEOUT:
-            errorMsg += "Request timeout. Please try again.";
-            break;
-          default:
-            errorMsg += "Unknown error occurred.";
-            break;
-        }
-        alert(errorMsg);
-        console.error("Geolocation error:", error);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-      }
-    );
-  }
-
-  // Find and display stations within 5km of user's location
-  function findNearbyStations() {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by this browser.");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      function (position) {
-        const userLat = position.coords.latitude;
-        const userLng = position.coords.longitude;
-
-        if (allLocations.length === 0) {
-          alert("No stations loaded. Please load stations first by clicking 'Show All Stations'.");
-          return;
-        }
-
-        // Get current filter selection
-        const currentFilter = $("#categorySelect").val();
-
-        // Calculate distance for each station and sort by distance
-        const stationsWithDistance = allLocations.map(station => {
-          const distance = calculateDistance(userLat, userLng, station.latitude, station.longitude);
-          return { ...station, distance };
-        }).sort((a, b) => a.distance - b.distance);
-
-        // Filter stations within 5km radius AND by category filter
-        const nearbyStations = stationsWithDistance.filter(station => {
-          // Check distance (within 5km)
-          if (station.distance > 5) return false;
-
-          // Check category filter
-          if (currentFilter !== "All" && station.category !== currentFilter) return false;
-
-          return true;
-        });
-
-        clearMarkers();
-
-        // Check if any stations were found
-        if (nearbyStations.length === 0) {
-          const filterText = currentFilter === "All" ? "stations" : `${currentFilter} stations`;
-          alert(`No ${filterText} found within 5km of your location. Try changing the filter or expanding your search area.`);
-          return;
-        }
-
-        // Add markers for nearby stations with distance info
-        nearbyStations.forEach((loc) => {
-          const { latitude, longitude, category, name, description, distance } = loc;
-
-          const iconPath = category === "Gas"
-            ? "assets/images/gas.png"
-            : "assets/images/EV.png";
-
-          const customIcon = L.icon({
-            iconUrl: iconPath,
-            iconSize: [38, 38],
-            iconAnchor: [19, 38],
-            popupAnchor: [0, -36],
-          });
-
-          const marker = L.marker([latitude, longitude], { icon: customIcon })
-            .bindPopup(`<b>${name}</b><br>${category}<br>${description}<br><strong>Distance: ${distance.toFixed(2)} km</strong><br><button onclick="showRealRoute(${latitude}, ${longitude}, '${name.replace(/'/g, "\\'")}')" style="margin-top: 5px; background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">Show Route</button>`, {
-              autoClose: false,
-              closeOnClick: false
-            });
-
-          markerClusterGroup.addLayer(marker);
-          markers.push(marker);
-        });
-
-        map.addLayer(markerClusterGroup);
-        findUserLocation();
-
-        // Automatically open all nearby station popups with delay
-        setTimeout(() => {
-          nearbyStations.forEach((loc, index) => {
-            const marker = markers.find(m => {
-              const markerPos = m.getLatLng();
-              return Math.abs(markerPos.lat - loc.latitude) < 0.0001 &&
-                Math.abs(markerPos.lng - loc.longitude) < 0.0001;
-            });
-
-            if (marker) {
-              setTimeout(() => {
-                marker.openPopup();
-              }, index * 200);
-            }
-          });
-        }, 1000);
-
-        // Log results with filter information
-        const filterText = currentFilter === "All" ? "all types" : currentFilter;
-        console.log(`Found ${nearbyStations.length} ${filterText} stations within 5km. Popups opened automatically.`);
-      },
-      function (error) {
-        alert("Unable to get location for nearby search. Please allow location access.");
-        console.error("Geolocation error:", error);
-      }
-    );
-  }
-
-  // Calculate distance between two coordinates using Haversine formula
-  function calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  // Remove all markers from the map
-  function clearMarkers() {
-    markerClusterGroup.clearLayers();
-    markers = [];
-  }
-
-  // ========================================
-  // ROUTE MANAGEMENT FUNCTIONS
-  // ========================================
-  // Clear all routes and route-related elements from the map
-  function clearRoutes() {
-    // Remove route control if exists
-    if (routeControl) {
-      map.removeControl(routeControl);
-      routeControl = null;
-    }
-
-    // Remove current route line if exists
-    if (currentRouteLine) {
-      map.removeLayer(currentRouteLine);
-      currentRouteLine = null;
-    }
-
-    // Remove user location marker if exists
-    if (userLocationMarker) {
-      map.removeLayer(userLocationMarker);
-      userLocationMarker = null;
-    }
-  }
-
-  // ========================================
-  // BUTTON EVENT HANDLERS
-  // ========================================
-  // Reset map to default view and clear routes
-  $("#resetBtn").click(() => {
-    clearRoutes(); // Clear any existing routes
-    map.setView([10.669644, 122.948844], 17);
-    console.log("Reset map to default view.");
-  });
-
-  // Clear all markers and routes from map
-  $("#clearBtn").click(() => {
-    clearMarkers();
-    if (routeControl) {
-      map.removeControl(routeControl);
-      routeControl = null;
-    }
-    console.log("Cleared all markers and routes.");
-  });
-
-  // Load markers and clear routes
-  $("#postBtn").click(() => {
-    clearRoutes(); // Clear routes when loading new markers
-    const selected = $("#categorySelect").val();
-    loadMarkers(selected);
-  });
-
-  // Create route between two user-selected points
-  $("#routeBtn").click(() => {
-    console.log("Select two points on the map to create a route.");
-
-    map.getContainer().style.cursor = "crosshair";
-
-    let points = [];
-    let startMarker = null;
-
-    // Wait for first click startpoint
-    map.once("click", function (e1) {
-      points.push(e1.latlng);
-
-      startMarker = L.marker(e1.latlng, {
-        icon: L.icon({
-          iconUrl: 'assets/images/s.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-        })
-      }).addTo(map).bindPopup("Start Point").openPopup();
-
-      console.log("Start point selected. Click destination point.");
-
-      // Wait for second click endpoint
-      map.once("click", function (e2) {
-        points.push(e2.latlng);
-
-        const endMarker = L.marker(e2.latlng, {
-          icon: L.icon({
-            iconUrl: 'assets/images/e.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-          })
-        }).addTo(map).bindPopup("End Point").openPopup();
-
-        map.getContainer().style.cursor = "";
-
-        // Remove existing route if present
-        if (routeControl) {
-          map.removeControl(routeControl);
-        }
-
-        console.log("Creating route...");
-
-        // Create routing control using OSRM service
-        routeControl = L.Routing.control({
-          waypoints: [points[0], points[1]],
-          createMarker: () => null,
-          draggableWaypoints: false,
-          routeWhileDragging: false,
-          addWaypoints: false,
-          lineOptions: {
-            styles: [
-              { color: '#2563eb', weight: 6, opacity: 0.8 },
-              { color: '#ffffff', weight: 2, opacity: 1 }
-            ]
-          },
-          router: L.Routing.osrmv1({
-            serviceUrl: 'https://router.project-osrm.org/route/v1'
-          })
-        }).addTo(map);
-
-        // Handle successful route calculation
-        routeControl.on('routesfound', function (e) {
-          const routes = e.routes;
-          const summary = routes[0].summary;
-          const distance = (summary.totalDistance / 1000).toFixed(2);
-          const time = Math.round(summary.totalTime / 60);
-
-          const routeBounds = L.latLngBounds([points[0], points[1]]);
-          map.fitBounds(routeBounds, { padding: [50, 50] });
-
-          console.log(`Route: ${distance} km, ${time} min. Map zoomed to fit route.`);
-
-          // Remove start/end markers after 3 seconds
-          setTimeout(() => {
-            if (startMarker) map.removeLayer(startMarker);
-            if (endMarker) map.removeLayer(endMarker);
-          }, 3000);
-        });
-
-        // Handle routing errors
-        routeControl.on('routingerror', function (e) {
-          alert("Error creating route. Please try different points.");
-          console.error("Routing error:", e);
-          map.getContainer().style.cursor = "";
-          if (startMarker) map.removeLayer(startMarker);
-          if (endMarker) map.removeLayer(endMarker);
-        });
-      });
-    });
-  });
-
-  // Filter stations by category and clear routes
-  $("#categorySelect").change(() => {
-    clearRoutes(); // Clear routes when filtering
-    const selected = $("#categorySelect").val();
-    const searchTerm = $("#searchInput").val().trim();
-    loadMarkers(selected, searchTerm);
-  });
-
-  // Search stations and clear routes
-  $("#searchBtn").click(() => {
-    clearRoutes(); // Clear routes when searching
-    searchStations();
-  });
-
-  $("#searchInput").keypress(function (e) {
-    if (e.which === 13) {
-      searchStations();
-    }
-  });
-
-  // Clear search and routes when input is empty
-  $("#searchInput").on('input', function () {
-    if ($(this).val().trim() === "") {
-      clearRoutes(); // Clear routes when clearing search
-      const currentFilter = $("#categorySelect").val();
-      loadMarkers(currentFilter);
-    }
-  });
-
-  // Find user location and clear existing routes
-  $("#findMeBtn").click(() => {
-    clearRoutes(); // Clear routes before finding location
-    findUserLocation();
-  });
-
-  // Find nearby stations and clear existing routes
-  $("#nearbyBtn").click(() => {
-    clearRoutes(); // Clear routes before finding nearby stations
-    findNearbyStations();
-  });
-
-  // Load all markers on page load
-  loadMarkers();
-});
-
-window.testRoute = function (lat, lng, name) {
-  console.log("testRoute called with:", lat, lng, name);
-  alert(`Testing route to ${name} at ${lat}, ${lng}`);
-
-  const testLine = L.polyline([
-    [10.669644, 122.948844],
-    [lat, lng]
-  ], {
-    color: 'black',
-    weight: 3,
-    opacity: 1
-  }).addTo(map);
-
-  map.fitBounds(testLine.getBounds(), { padding: [20, 20] });
-  console.log(`Test route to ${name} created!`);
 };
 
-window.showRouteToStation = function (stationLat, stationLng, stationName) {
-  console.log("showRouteToStation called:", stationLat, stationLng, stationName);
+$(document).ready(function () {
+  initializeMap();
+  setupEventHandlers();
+  loadAllStations();
+});
 
-  if (!navigator.geolocation) {
-    console.log("Geolocation not supported. Cannot show route.");
+// MAP INITIALIZATIO
+
+function initializeMap() {
+  // Create the map
+  map = L.map('map').setView(CONFIG.defaultCenter, CONFIG.defaultZoom);
+
+  // Add tile layer
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Setup marker clustering for better performance
+  markerClusterGroup = L.markerClusterGroup({
+    chunkedLoading: true,
+    maxClusterRadius: 50,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+    zoomToBoundsOnClick: true
+  });
+}
+
+function loadAllStations() {
+  $.ajax({
+    url: "forms/fetch_location.php",
+    type: "GET",
+    success: function (response) {
+      try {
+        const result = JSON.parse(response);
+        if (result.status === "success") {
+          allLocations = result.data;
+          displayStations(allLocations);
+        } else {
+          console.error("Error loading stations:", result.message);
+        }
+      } catch (error) {
+        console.error("Error parsing station data:", error);
+      }
+    },
+    error: function () {
+      console.error("Failed to fetch station data");
+      alert("Error loading station data. Please refresh the page.");
+    }
+  });
+}
+
+function filterStations(filter = "All", searchTerm = "") {
+  let filteredStations = allLocations;
+
+  // Filter by category
+  if (filter !== "All") {
+    filteredStations = filteredStations.filter(station => station.category === filter);
+  }
+
+  // Filter by search term
+  if (searchTerm) {
+    const searchLower = searchTerm.toLowerCase();
+    filteredStations = filteredStations.filter(station =>
+      station.name.toLowerCase().includes(searchLower)
+    );
+  }
+
+  return filteredStations;
+}
+
+function displayStations(stations) {
+  clearAllMarkers();
+
+  if (stations.length === 0) {
+    console.log("No stations to display");
     return;
   }
 
-  console.log(`Getting location for route to ${stationName}...`);
+  // Create markers for each station
+  stations.forEach(station => {
+    const marker = createStationMarker(station);
+    markerClusterGroup.addLayer(marker);
+    markers.push(marker);
+  });
+
+  // Add markers to map
+  map.addLayer(markerClusterGroup);
+}
+
+function createStationMarker(station) {
+  const { latitude, longitude, category, name, description } = station;
+
+  // Choose icon based on station type
+  const iconUrl = category === "Gas" ? CONFIG.icons.gas : CONFIG.icons.ev;
+
+  const customIcon = L.icon({
+    iconUrl: iconUrl,
+    iconSize: [38, 38],
+    iconAnchor: [19, 38],
+    popupAnchor: [0, -36]
+  });
+
+  // Create marker
+  const marker = L.marker([latitude, longitude], { icon: customIcon });
+
+  // Create popup content
+  let popupContent = `<b>${name}</b><br>${category}<br>${description}`;
+
+  // Add distance if available
+  if (station.distance) {
+    popupContent += `<br><strong>Distance: ${station.distance.toFixed(2)} km</strong>`;
+  }
+
+  // Add route button
+  const safeName = name.replace(/'/g, "\\'");
+  popupContent += `<br><button onclick="showRouteToStation(${latitude}, ${longitude}, '${safeName}')" 
+                   style="margin-top: 5px; background: #2563eb; color: white; border: none; 
+                   padding: 5px 10px; border-radius: 3px; cursor: pointer;">Show Route</button>`;
+
+  marker.bindPopup(popupContent);
+
+  // Store station info on marker
+  marker.stationData = station;
+
+  return marker;
+}
+
+// GEOLOCATION
+
+function findUserLocation() {
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by this browser.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function (position) {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      // Remove existing user marker
+      if (userLocationMarker) {
+        map.removeLayer(userLocationMarker);
+      }
+
+      // Add user location marker
+      userLocationMarker = L.marker([lat, lng], {
+        icon: L.icon({
+          iconUrl: CONFIG.icons.userLocation,
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34]
+        })
+      }).addTo(map).bindPopup("Your Location").openPopup();
+
+      // Center map on user location
+      map.setView([lat, lng], 15);
+      console.log(`User location found: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+    },
+    function (error) {
+      handleLocationError(error);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 60000
+    }
+  );
+}
+
+function findNearbyStations() {
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by this browser.");
+    return;
+  }
+
+  if (allLocations.length === 0) {
+    alert("No stations loaded. Please wait for stations to load first.");
+    return;
+  }
 
   navigator.geolocation.getCurrentPosition(
     function (position) {
       const userLat = position.coords.latitude;
       const userLng = position.coords.longitude;
+      const currentFilter = $("#categorySelect").val();
 
-      console.log("User:", userLat, userLng, "Station:", stationLat, stationLng);
+      // Calculate distances and find nearby stations
+      const stationsWithDistance = allLocations.map(station => {
+        const distance = calculateDistance(userLat, userLng, station.latitude, station.longitude);
+        return { ...station, distance: distance };
+      });
 
-      if (currentRouteLine) {
-        map.removeLayer(currentRouteLine);
+      // Filter by distance and category
+      let nearbyStations = stationsWithDistance.filter(station => {
+        if (station.distance > CONFIG.nearbyRadius) return false;
+        if (currentFilter !== "All" && station.category !== currentFilter) return false;
+        return true;
+      });
+
+      // Sort by distance
+      nearbyStations.sort((a, b) => a.distance - b.distance);
+
+      if (nearbyStations.length === 0) {
+        const filterText = currentFilter === "All" ? "stations" : `${currentFilter} stations`;
+        alert(`No ${filterText} found within ${CONFIG.nearbyRadius}km of your location.`);
+        return;
       }
 
-      if (routeControl) {
-        map.removeControl(routeControl);
-        routeControl = null;
-      }
+      // Display nearby stations
+      displayStations(nearbyStations);
 
-      if (userLocationMarker) {
-        map.removeLayer(userLocationMarker);
-      }
+      // Show user location
+      findUserLocation();
 
-      userLocationMarker = L.marker([userLat, userLng], {
-        icon: L.icon({
-          iconUrl: 'assets/images/ev.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41]
-        })
-      }).addTo(map).bindPopup("Your Location").openPopup();
-
-      currentRouteLine = L.polyline([
-        [userLat, userLng],
-        [stationLat, stationLng]
-      ], {
-        color: '#2563eb',
-        weight: 6,
-        opacity: 0.8
-      }).addTo(map);
-
-      const bounds = L.latLngBounds([
-        [userLat, userLng],
-        [stationLat, stationLng]
-      ]);
-      map.fitBounds(bounds, { padding: [50, 50] });
-
-      const distance = calculateDistance(userLat, userLng, stationLat, stationLng);
-      console.log(`Route to ${stationName}: ${distance.toFixed(2)} km. Line drawn and zoomed.`);
+      console.log(`Found ${nearbyStations.length} stations within ${CONFIG.nearbyRadius}km`);
     },
     function (error) {
-      console.error("Location error:", error);
-      alert("Could not get your location. Please allow location access.");
+      handleLocationError(error);
     }
   );
-};
+}
 
-// Main function: Creates detailed routing from user location to selected station
-window.showRealRoute = function (stationLat, stationLng, stationName) {
-  console.log("showRealRoute called with:", stationLat, stationLng, stationName);
+function handleLocationError(error) {
+  let errorMessage = "Unable to get your location: ";
 
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      errorMessage += "Permission denied. Please allow location access.";
+      break;
+    case error.POSITION_UNAVAILABLE:
+      errorMessage += "Position unavailable. Please check your GPS settings.";
+      break;
+    case error.TIMEOUT:
+      errorMessage += "Request timeout. Please try again.";
+      break;
+    default:
+      errorMessage += "Unknown error occurred.";
+      break;
+  }
+
+  alert(errorMessage);
+  console.error("Geolocation error:", error);
+}
+
+//UTILITY 
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function findMarkerByLocation(lat, lng) {
+  return markers.find(marker => {
+    const markerPos = marker.getLatLng();
+    return Math.abs(markerPos.lat - lat) < 0.0001 &&
+      Math.abs(markerPos.lng - lng) < 0.0001;
+  });
+}
+
+function clearAllMarkers() {
+  markerClusterGroup.clearLayers();
+  markers = [];
+}
+
+function clearAllRoutes() {
+  if (routeControl) {
+    map.removeControl(routeControl);
+    routeControl = null;
+  }
+
+  if (currentRouteLine) {
+    map.removeLayer(currentRouteLine);
+    currentRouteLine = null;
+  }
+
+  if (userLocationMarker) {
+    map.removeLayer(userLocationMarker);
+    userLocationMarker = null;
+  }
+}
+
+function resetMapView() {
+  map.setView(CONFIG.defaultCenter, CONFIG.defaultZoom);
+}
+
+// SEARCH 
+
+function performSearch() {
+  const searchTerm = $("#searchInput").val().trim();
+  const currentFilter = $("#categorySelect").val();
+
+  const filteredStations = filterStations(currentFilter, searchTerm);
+  displayStations(filteredStations);
+
+  if (filteredStations.length === 0) {
+    alert("No stations found matching your search criteria.");
+  }
+}
+
+// ROUTING 
+
+function showRouteToStation(stationLat, stationLng, stationName) {
   if (!navigator.geolocation) {
     alert("Geolocation is not supported by your browser.");
     return;
   }
 
-  console.log("Requesting geolocation...");
-
-  // Get user's current location
   navigator.geolocation.getCurrentPosition(
     function (position) {
-      console.log("SUCCESS: Got location!", position);
       const userLat = position.coords.latitude;
       const userLng = position.coords.longitude;
 
-      console.log("User location:", userLat, userLng);
-      console.log("Station location:", stationLat, stationLng);
+      clearAllRoutes();
 
-      // Clean up existing routes and markers
-      if (currentRouteLine) {
-        map.removeLayer(currentRouteLine);
-      }
-
-      if (userLocationMarker) {
-        map.removeLayer(userLocationMarker);
-      }
-
-      // Add marker for user's location
+      // Add user location marker
       userLocationMarker = L.marker([userLat, userLng], {
         icon: L.icon({
-          iconUrl: 'assets/images/q.png',
+          iconUrl: CONFIG.icons.userLocation,
           iconSize: [25, 41],
           iconAnchor: [12, 41]
         })
       }).addTo(map).bindPopup("Your Location").openPopup();
 
-      if (routeControl) {
-        map.removeControl(routeControl);
-      }
-
-      // Create routing control with OSRM for turn-by-turn directions
+      // Create route
       routeControl = L.Routing.control({
         waypoints: [
           L.latLng(userLat, userLng),
@@ -919,372 +368,97 @@ window.showRealRoute = function (stationLat, stationLng, stationName) {
         })
       }).addTo(map);
 
-      // Process and display route with turn-by-turn directions
+      // Handle successful route
       routeControl.on('routesfound', function (e) {
-        console.log("Route found with directions!", e);
-        const routes = e.routes;
-        const route = routes[0];
-        const summary = route.summary;
-        const instructions = route.instructions;
+        const route = e.routes[0];
+        const distance = (route.summary.totalDistance / 1000).toFixed(1);
+        const time = Math.round(route.summary.totalTime / 60);
 
-        const totalDistance = (summary.totalDistance / 1000).toFixed(1);
-        const totalTime = Math.round(summary.totalTime / 60);
-
-        // Build directions text from route instructions
-        let directionsText = `${stationName}\n`;
-        directionsText += `${totalDistance} km, ${totalTime} min\n\n`;
-
-        instructions.forEach((instruction, index) => {
-          const distance = instruction.distance;
-          let distanceText = '';
-
-          // Format distance as km or m
-          if (distance >= 1000) {
-            distanceText = `${(distance / 1000).toFixed(1)} km`;
-          } else {
-            distanceText = `${Math.round(distance)} m`;
-          }
-
-          let text = instruction.text || instruction.instruction || 'Continue';
-
-          if (index < instructions.length - 1) {
-            directionsText += `${text} ${distanceText}\n`;
-          } else {
-            directionsText += `${text}\n`;
-          }
-        });
-
-        // Fit map to show entire route
         map.fitBounds(route.bounds || [[userLat, userLng], [stationLat, stationLng]], { padding: [50, 50] });
-        console.log("Detailed directions:", directionsText);
+        console.log(`Route to ${stationName}: ${distance}km, ${time} minutes`);
       });
 
+      // Handle routing errors
       routeControl.on('routingerror', function (e) {
-        console.error("Routing error, using simple line:", e);
-
-        if (routeControl) {
-          map.removeControl(routeControl);
-          routeControl = null;
-        }
-
-        currentRouteLine = L.polyline([
-          [userLat, userLng],
-          [stationLat, stationLng]
-        ], {
-          color: '#2563eb',
-          weight: 6,
-          opacity: 0.8,
-          dashArray: '10, 10'
-        }).addTo(map);
-
-        const bounds = L.latLngBounds([
-          [userLat, userLng],
-          [stationLat, stationLng]
-        ]);
-        map.fitBounds(bounds, { padding: [50, 50] });
-
-        const distance = calculateDistance(userLat, userLng, stationLat, stationLng);
-        console.log(`Fallback route: ${distance.toFixed(1)} km direct line`);
+        console.error("Routing failed, using direct line:", e);
+        createDirectRoute(userLat, userLng, stationLat, stationLng, stationName);
       });
     },
     function (error) {
-      // Handle geolocation errors 
-      console.error("Geolocation error:", error);
-      let errorMsg = "Could not get your location: ";
-      let suggestion = "";
-
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMsg += "Permission denied.";
-          suggestion = "Please allow location access and try again, or use 'Find My Location' button first.";
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMsg += "Position unavailable.";
-          suggestion = "GPS may be disabled. Try enabling location services.";
-          break;
-        case error.TIMEOUT:
-          errorMsg += "Request timeout.";
-          suggestion = "Location request took too long. Try again.";
-          break;
-        default:
-          errorMsg += "Unknown error.";
-          suggestion = "Try refreshing the page and allowing location access.";
-          break;
-      }
-
-      console.log("Error details:", errorMsg, suggestion);
-      alert(errorMsg + " " + suggestion);
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 60000
+      handleLocationError(error);
     }
   );
-};
-    // Wait for first click startpoint
-    map.once("click", function (e1) {
-      points.push(e1.latlng);
+}
 
-      startMarker = L.marker(e1.latlng, {
-        icon: L.icon({
-          iconUrl: 'assets/images/s.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-        })
-      }).addTo(map).bindPopup("Start Point").openPopup();
+function createDirectRoute(userLat, userLng, stationLat, stationLng, stationName) {
+  // Remove failed route control
+  if (routeControl) {
+    map.removeControl(routeControl);
+    routeControl = null;
+  }
 
-      console.log("Start point selected. Click destination point.");
-
-      // Wait for second click endpoint
-      map.once("click", function (e2) {
-        points.push(e2.latlng);
-
-        const endMarker = L.marker(e2.latlng, {
-          icon: L.icon({
-            iconUrl: 'assets/images/e.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-          })
-        }).addTo(map).bindPopup("End Point").openPopup();
-
-        map.getContainer().style.cursor = "";
-
-        // Remove existing route if present
-        if (routeControl) {
-          map.removeControl(routeControl);
-        }
-
-        console.log("Creating route...");
-
-        // Create routing control using OSRM service
-        routeControl = L.Routing.control({
-          waypoints: [points[0], points[1]],
-          createMarker: () => null,
-          draggableWaypoints: false,
-          routeWhileDragging: false,
-          addWaypoints: false,
-          lineOptions: {
-            styles: [
-              { color: '#2563eb', weight: 6, opacity: 0.8 },
-              { color: '#ffffff', weight: 2, opacity: 1 }
-            ]
-          },
-          router: L.Routing.osrmv1({
-            serviceUrl: 'https://router.project-osrm.org/route/v1'
-          })
-        }).addTo(map);
-
-        // Handle successful route calculation
-        routeControl.on('routesfound', function (e) {
-          const routes = e.routes;
-          const summary = routes[0].summary;
-          const distance = (summary.totalDistance / 1000).toFixed(2);
-          const time = Math.round(summary.totalTime / 60);
-
-          const routeBounds = L.latLngBounds([points[0], points[1]]);
-          map.fitBounds(routeBounds, { padding: [50, 50] });
-
-          console.log(`Route: ${distance} km, ${time} min. Map zoomed to fit route.`);
-
-          // Remove start/end markers after 3 seconds
-          setTimeout(() => {
-            if (startMarker) map.removeLayer(startMarker);
-            if (endMarker) map.removeLayer(endMarker);
-          }, 3000);
-        });
-
-        // Handle routing errors
-        routeControl.on('routingerror', function (e) {
-          alert("Error creating route. Please try different points.");
-          console.error("Routing error:", e);
-          map.getContainer().style.cursor = "";
-          if (startMarker) map.removeLayer(startMarker);
-          if (endMarker) map.removeLayer(endMarker);
-        });
-      });
-    });
-  });
-
-  // Filter stations by category and clear routes
-  $("#categorySelect").change(() => {
-    clearRoutes(); // Clear routes when filtering
-    const selected = $("#categorySelect").val();
-    const searchTerm = $("#searchInput").val().trim();
-    loadMarkers(selected, searchTerm);
-  });
-
-  // Search stations and clear routes
-  $("#searchBtn").click(() => {
-    clearRoutes(); // Clear routes when searching
-    searchStations();
-  });
-
-  $("#searchInput").keypress(function (e) {
-    if (e.which === 13) {
-      searchStations();
-    }
-  });
-
-  // Clear search and routes when input is empty
-  $("#searchInput").on('input', function () {
-    if ($(this).val().trim() === "") {
-      clearRoutes(); // Clear routes when clearing search
-      const currentFilter = $("#categorySelect").val();
-      loadMarkers(currentFilter);
-    }
-  });
-
-  // Find user location and clear existing routes
-  $("#findMeBtn").click(() => {
-    clearRoutes(); // Clear routes before finding location
-    findUserLocation();
-  });
-
-  // Find nearby stations and clear existing routes
-  $("#nearbyBtn").click(() => {
-    clearRoutes(); // Clear routes before finding nearby stations
-    findNearbyStations();
-  });
-
-  // Load all markers on page load
-  loadMarkers();
-});
-
-window.testRoute = function (lat, lng, name) {
-  console.log("testRoute called with:", lat, lng, name);
-  alert(`Testing route to ${name} at ${lat}, ${lng}`);
-
-  const testLine = L.polyline([
-    [10.669644, 122.948844],
-    [lat, lng]
+  // Create direct line
+  currentRouteLine = L.polyline([
+    [userLat, userLng],
+    [stationLat, stationLng]
   ], {
-    color: 'black',
-    weight: 3,
-    opacity: 1
+    color: '#2563eb',
+    weight: 6,
+    opacity: 0.8,
+    dashArray: '10, 10'
   }).addTo(map);
 
-  map.fitBounds(testLine.getBounds(), { padding: [20, 20] });
-  console.log(`Test route to ${name} created!`);
-};
+  // Fit map to show route
+  const bounds = L.latLngBounds([[userLat, userLng], [stationLat, stationLng]]);
+  map.fitBounds(bounds, { padding: [50, 50] });
 
-window.showRouteToStation = function (stationLat, stationLng, stationName) {
-  console.log("showRouteToStation called:", stationLat, stationLng, stationName);
+  const distance = calculateDistance(userLat, userLng, stationLat, stationLng);
+  console.log(`Direct route to ${stationName}: ${distance.toFixed(1)}km`);
+}
 
-  if (!navigator.geolocation) {
-    console.log("Geolocation not supported. Cannot show route.");
-    return;
-  }
+function createCustomRoute() {
+  map.getContainer().style.cursor = "crosshair";
+  let points = [];
+  let startMarker = null;
 
-  console.log(`Getting location for route to ${stationName}...`);
+  // First click - start point
+  map.once("click", function (e1) {
+    points.push(e1.latlng);
 
-  navigator.geolocation.getCurrentPosition(
-    function (position) {
-      const userLat = position.coords.latitude;
-      const userLng = position.coords.longitude;
+    startMarker = L.marker(e1.latlng, {
+      icon: L.icon({
+        iconUrl: CONFIG.icons.startPoint,
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34]
+      })
+    }).addTo(map).bindPopup("Start Point").openPopup();
 
-      console.log("User:", userLat, userLng, "Station:", stationLat, stationLng);
+    // Second click - end point
+    map.once("click", function (e2) {
+      points.push(e2.latlng);
 
-      if (currentRouteLine) {
-        map.removeLayer(currentRouteLine);
-      }
-
-      if (routeControl) {
-        map.removeControl(routeControl);
-        routeControl = null;
-      }
-
-      if (userLocationMarker) {
-        map.removeLayer(userLocationMarker);
-      }
-
-      userLocationMarker = L.marker([userLat, userLng], {
+      const endMarker = L.marker(e2.latlng, {
         icon: L.icon({
-          iconUrl: 'assets/images/ev.png',
+          iconUrl: CONFIG.icons.userLocation,
           iconSize: [25, 41],
-          iconAnchor: [12, 41]
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34]
         })
-      }).addTo(map).bindPopup("Your Location").openPopup();
+      }).addTo(map).bindPopup("End Point").openPopup();
 
-      currentRouteLine = L.polyline([
-        [userLat, userLng],
-        [stationLat, stationLng]
-      ], {
-        color: '#2563eb',
-        weight: 6,
-        opacity: 0.8
-      }).addTo(map);
+      map.getContainer().style.cursor = "";
 
-      const bounds = L.latLngBounds([
-        [userLat, userLng],
-        [stationLat, stationLng]
-      ]);
-      map.fitBounds(bounds, { padding: [50, 50] });
-
-      const distance = calculateDistance(userLat, userLng, stationLat, stationLng);
-      console.log(`Route to ${stationName}: ${distance.toFixed(2)} km. Line drawn and zoomed.`);
-    },
-    function (error) {
-      console.error("Location error:", error);
-      alert("Could not get your location. Please allow location access.");
-    }
-  );
-};
-
-// Main function: Creates detailed routing from user location to selected station
-window.showRealRoute = function (stationLat, stationLng, stationName) {
-  console.log("showRealRoute called with:", stationLat, stationLng, stationName);
-
-  if (!navigator.geolocation) {
-    alert("Geolocation is not supported by your browser.");
-    return;
-  }
-
-  console.log("Requesting geolocation...");
-
-  // Get user's current location
-  navigator.geolocation.getCurrentPosition(
-    function (position) {
-      console.log("SUCCESS: Got location!", position);
-      const userLat = position.coords.latitude;
-      const userLng = position.coords.longitude;
-
-      console.log("User location:", userLat, userLng);
-      console.log("Station location:", stationLat, stationLng);
-
-      // Clean up existing routes and markers
-      if (currentRouteLine) {
-        map.removeLayer(currentRouteLine);
-      }
-
-      if (userLocationMarker) {
-        map.removeLayer(userLocationMarker);
-      }
-
-      // Add marker for user's location
-      userLocationMarker = L.marker([userLat, userLng], {
-        icon: L.icon({
-          iconUrl: 'assets/images/q.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41]
-        })
-      }).addTo(map).bindPopup("Your Location").openPopup();
-
+      // Create route between points
       if (routeControl) {
         map.removeControl(routeControl);
       }
 
-      // Create routing control with OSRM for turn-by-turn directions
       routeControl = L.Routing.control({
-        waypoints: [
-          L.latLng(userLat, userLng),
-          L.latLng(stationLat, stationLng)
-        ],
+        waypoints: points,
         createMarker: () => null,
-        routeWhileDragging: false,
         draggableWaypoints: false,
+        routeWhileDragging: false,
         addWaypoints: false,
         lineOptions: {
           styles: [{ color: '#2563eb', weight: 6, opacity: 0.8 }]
@@ -1294,107 +468,96 @@ window.showRealRoute = function (stationLat, stationLng, stationName) {
         })
       }).addTo(map);
 
-      // Process and display route with turn-by-turn directions
       routeControl.on('routesfound', function (e) {
-        console.log("Route found with directions!", e);
-        const routes = e.routes;
-        const route = routes[0];
-        const summary = route.summary;
-        const instructions = route.instructions;
+        const route = e.routes[0];
+        const distance = (route.summary.totalDistance / 1000).toFixed(2);
+        const time = Math.round(route.summary.totalTime / 60);
 
-        const totalDistance = (summary.totalDistance / 1000).toFixed(1);
-        const totalTime = Math.round(summary.totalTime / 60);
+        map.fitBounds(L.latLngBounds(points), { padding: [50, 50] });
+        console.log(`Custom route: ${distance}km, ${time} minutes`);
 
-        // Build directions text from route instructions
-        let directionsText = `${stationName}\n`;
-        directionsText += `${totalDistance} km, ${totalTime} min\n\n`;
-
-        instructions.forEach((instruction, index) => {
-          const distance = instruction.distance;
-          let distanceText = '';
-
-          // Format distance as km or m
-          if (distance >= 1000) {
-            distanceText = `${(distance / 1000).toFixed(1)} km`;
-          } else {
-            distanceText = `${Math.round(distance)} m`;
-          }
-
-          let text = instruction.text || instruction.instruction || 'Continue';
-
-          if (index < instructions.length - 1) {
-            directionsText += `${text} ${distanceText}\n`;
-          } else {
-            directionsText += `${text}\n`;
-          }
-        });
-
-        // Fit map to show entire route
-        map.fitBounds(route.bounds || [[userLat, userLng], [stationLat, stationLng]], { padding: [50, 50] });
-        console.log("Detailed directions:", directionsText);
+        // Remove temporary markers after 3 seconds
+        setTimeout(() => {
+          if (startMarker) map.removeLayer(startMarker);
+          if (endMarker) map.removeLayer(endMarker);
+        }, 3000);
       });
 
-      // Fallback: If routing fails, draw simple straight line
-      routeControl.on('routingerror', function (e) {
-        console.error("Routing error, using simple line:", e);
-
-        if (routeControl) {
-          map.removeControl(routeControl);
-          routeControl = null;
-        }
-
-        currentRouteLine = L.polyline([
-          [userLat, userLng],
-          [stationLat, stationLng]
-        ], {
-          color: '#2563eb',
-          weight: 6,
-          opacity: 0.8,
-          dashArray: '10, 10'
-        }).addTo(map);
-
-        const bounds = L.latLngBounds([
-          [userLat, userLng],
-          [stationLat, stationLng]
-        ]);
-        map.fitBounds(bounds, { padding: [50, 50] });
-
-        const distance = calculateDistance(userLat, userLng, stationLat, stationLng);
-        console.log(`Fallback route: ${distance.toFixed(1)} km direct line`);
+      routeControl.on('routingerror', function () {
+        alert("Error creating route. Please try different points.");
+        map.getContainer().style.cursor = "";
+        if (startMarker) map.removeLayer(startMarker);
+        if (endMarker) map.removeLayer(endMarker);
       });
-    },
-    function (error) {
-      // Handle geolocation errors with detailed messages
-      console.error("Geolocation error:", error);
-      let errorMsg = "Could not get your location: ";
-      let suggestion = "";
+    });
+  });
+}
 
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMsg += "Permission denied.";
-          suggestion = "Please allow location access and try again, or use 'Find My Location' button first.";
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMsg += "Position unavailable.";
-          suggestion = "GPS may be disabled. Try enabling location services.";
-          break;
-        case error.TIMEOUT:
-          errorMsg += "Request timeout.";
-          suggestion = "Location request took too long. Try again.";
-          break;
-        default:
-          errorMsg += "Unknown error.";
-          suggestion = "Try refreshing the page and allowing location access.";
-          break;
-      }
 
-      console.log("Error details:", errorMsg, suggestion);
-      alert(errorMsg + " " + suggestion);
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 60000
+function setupEventHandlers() {
+  $("#resetBtn").click(function () {
+    clearAllRoutes();
+    resetMapView();
+    console.log("Map reset to default view");
+  });
+
+  $("#clearBtn").click(function () {
+    clearAllMarkers();
+    clearAllRoutes();
+    console.log("Cleared all markers and routes");
+  });
+
+  $("#postBtn").click(function () {
+    clearAllRoutes();
+    const selectedFilter = $("#categorySelect").val();
+    const filteredStations = filterStations(selectedFilter);
+    displayStations(filteredStations);
+  });
+
+  $("#findMeBtn").click(function () {
+    clearAllRoutes();
+    findUserLocation();
+  });
+
+  $("#nearbyBtn").click(function () {
+    clearAllRoutes();
+    findNearbyStations();
+  });
+
+  $("#routeBtn").click(function () {
+    console.log("Click two points on the map to create a route");
+    createCustomRoute();
+  });
+
+  $("#searchBtn").click(function () {
+    clearAllRoutes();
+    performSearch();
+  });
+
+  $("#searchInput").keypress(function (e) {
+    if (e.which === 13) { // Enter key
+      clearAllRoutes();
+      performSearch();
     }
-  );
-};
+  });
+
+  $("#searchInput").on('input', function () {
+    if ($(this).val().trim() === "") {
+      clearAllRoutes();
+      const currentFilter = $("#categorySelect").val();
+      const filteredStations = filterStations(currentFilter);
+      displayStations(filteredStations);
+    }
+  });
+
+  $("#categorySelect").change(function () {
+    clearAllRoutes();
+    const selectedFilter = $(this).val();
+    const searchTerm = $("#searchInput").val().trim();
+    const filteredStations = filterStations(selectedFilter, searchTerm);
+    displayStations(filteredStations);
+  });
+}
+
+// Make function available globally for popup buttons
+window.showRouteToStation = showRouteToStation;
