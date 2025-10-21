@@ -28,7 +28,10 @@
         <h2>Map Controls</h2>
         <div class="filter">
           <label for="searchInput">Search Stations:</label>
-          <input type="text" id="searchInput" placeholder="Search by name..." />
+          <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search by name..." autocomplete="off" />
+            <div id="searchSuggestions" class="search-suggestions"></div>
+          </div>
           <button id="searchBtn">Search</button>
         </div>
   
